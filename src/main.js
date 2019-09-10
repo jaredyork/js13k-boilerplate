@@ -281,33 +281,33 @@
   var grass=lc('grass','.gif');
   var dirt=lc('dirt','.gif');
   var rock=[];
-  for (var i = 0; i < 3; i++) {
+  for (var i = 0; i < 4; i++) {
     rock.push(lc('rock'+i,'.gif'));
   }
   var rockblue=lc('rockblue','.gif');
   var oiron=lc('oiron','.gif');
   var lavarock=lc('lavarock','.gif');
   var bedrock=lc('bedrock','.gif');
-  var ladder=lc('ladder','.png');
+  var ladder=lc('ladder','.gif');
   var lava=lc('lava','.gif');
-  var ecrystal=lc('ecrystal','.png');
+  var ecrystal=lc('ecrystal','.gif');
   var bg_rocks=[];
-  for (var i = 0; i < 3; i++) {
+  for (var i = 0; i < 4; i++) {
     bg_rocks.push(lc('bg_rock'+i,'.gif'));
   }
   var bg_lavarock=lc('bg_lavarock','.gif');
   var bg_stars=lc('bg_stars','.gif');
-  var spcship=lc('spcship','.png');
-  var player=lc('player','.png');
-  var player_drilling=lc('playerdown','.png');
-  var plasmaball=lc('plasmaball','.png');
-  var oortbug=lc('oortbug','.png');
-  var heart=lc('heart','.png');
-  var heartempty=lc('heartempty','.png');
+  var spcship=lc('spcship','.gif');
+  var player=lc('player','.gif');
+  var player_drilling=lc('playerdown','.gif');
+  var plasmaball=lc('plasmaball','.gif');
+  var oortbug=lc('oortbug','.gif');
+  var heart=lc('heart','.gif');
+  var heartempty=lc('heartempty','.gif');
   var lifecanister=lc('lifecanister','.gif');
   var cloud_imgs=[];
   for (var i = 0; i < 1; i++) {
-    cloud_imgs.push(lc('cloud'+i,'.png'));
+    cloud_imgs.push(lc('cloud'+i,'.gif'));
   }
 
   var worldTemplates = [
@@ -331,6 +331,12 @@
       hasGrass: !1,
       hasDirt: !1,
       hasSky: !rint(0, 1)
+    },
+    {
+      name: "wasteland",
+      rockIndex: 3,
+      hasGrass: !1,
+      hasSky: !0
     }
   ];
   worldTemplate = worldTemplates[rint(0, worldTemplates.length - 1)];  
@@ -459,6 +465,27 @@
     return (loPos*(1-u)) + (hiPos*u);  // interpolate
   }
 
+  function isTileAbove(xp, yp) {
+    for (var y = yp - 1; y > 0; y--) {
+      if (tiles[xp][y]) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function getTileType(tile) {
+    var type = null;
+
+    for (var i = 0; i < rock.length; i++) {
+      if (tile.i == rock[i]) {
+        type = "rock";
+      }
+    }
+  
+    return type;
+  }
+
   class Anim {
     constructor(amtF,f,d) {
       var t = this;
@@ -508,6 +535,7 @@
       t.collidable=args.collidable;
       t.destructible=args.destructible;
       t.damage=args.damage;
+      t.elapsed = 0;
       if (args.canFlip) {
         t.hf=rint(0,1);
         t.vf=rint(0,1);
@@ -538,6 +566,8 @@
 
       t.x += t.vx;
       t.y += t.vy;
+      
+      t.elapsed++;
     }
     draw(ctx){
       var t = this;
@@ -653,6 +683,7 @@
       t.delay = 90;
       t.tick = 0;
       t.gnd=!1;
+      t.useGravity = !0;
       t.canDestroy = !1;
     }
 
@@ -673,7 +704,7 @@
         t.vy = 0;
       }
 
-      if (t.vy < 10) {
+      if (t.useGravity && t.vy < 10) {
         t.vy += gravity;
       }
 
@@ -860,8 +891,8 @@
       super(x,y);
       var t = this;
       t.i=i;
-      t.w=i.w;
-      t.h=i.h;
+      t.w=i.width;
+      t.h=i.height;
       t.vx=vx;
       t.vy=vy;
       t.friendly=friendly;
@@ -1116,9 +1147,11 @@
             };
 
             if (yp < prln + 6) {
-              texture = dirt;
+              if (worldTemplate.hasDirt) {
+                texture = dirt;
+              }
 
-              if (yp == prln) {
+              if (yp == prln && worldTemplate.hasGrass) {
                 texture = grass;
                 args.canFlip = false;
               }
@@ -1569,9 +1602,7 @@
         }
 
         for ( j = 0; j < projs.length; j++) {
-          var d = colCheck(projs[j], mob);
-
-          if (d) {
+          if (colRect(projs[j], mob)) {
             mobs.splice(i, 1);
             projs.splice(j, 1);
           }
@@ -1588,7 +1619,47 @@
           var tile = tiles[xp][yp];
 
           if (tile) {
-            if (tile.i == lava) {
+
+            if (getTileType(tile) == "rock") {
+              
+            }
+
+            if (tile.i == grass) {
+              var args = {
+                canFlip:false,
+                destructible:true,
+                collidable:true
+              };
+              
+              if (xp-1 >= 0) {
+                var tllf = tiles[xp-1][yp];
+                if (tllf) {
+                  if (tllf.i == dirt) {
+                    if (!isTileAbove(xp-1, yp)) {
+                      if (!tiles[xp-1][yp-1]) {
+                        if (rint(0, 10000) > 9950)
+                          tiles[xp-1][yp] = new Tile((xp-1)*tileSize,yp*tileSize,grass,args);
+                      }
+                    }
+                  }
+                }
+              }
+
+              if (xp+1 < mapw) {
+                var tlrt = tiles[xp+1][yp];
+                if (tlrt) {
+                  if (tlrt.i == dirt) {
+                    if (!isTileAbove(xp+1, yp)) {
+                      if (!tiles[xp+1][yp-1]) {
+                        if (rint(0, 10000) > 9950)
+                          tiles[xp+1][yp] = new Tile((xp+1)*tileSize,yp*tileSize,grass,args);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            else if (tile.i == lava && tile.elapsed % 120 == 0) {
               var args = {
                 canFlip:true,
                 destructible:false,
@@ -1596,19 +1667,22 @@
               };
               
               if (xp-1 >= 0) {
-                if (!tiles[xp-1][yp]) {
+                var tllf = tiles[xp-1][yp];
+                if (!tllf) {
                   tiles[xp-1][yp] = new Tile((xp-1)*tileSize,yp*tileSize,lava,args);
                 }
               }
 
               if (xp+1 < mapw) {
-                if (!tiles[xp+1][yp]) {
+                var tlrt = tiles[xp+1][yp];
+                if (!tlrt) {
                   tiles[xp+1][yp] = new Tile((xp+1)*tileSize,yp*tileSize,lava,args);
                 }
               }
 
               if (yp+1 < maph) {
-                if (!tiles[xp][yp+1]) {
+                var tlbot = tiles[xp][yp+1];
+                if (!tlbot) {
                   tiles[xp][yp+1] = new Tile(xp*tileSize,(yp+1)*tileSize,lava,args);
                 }
               }
@@ -1625,6 +1699,46 @@
             tile = tiles[xp][yp];
               
             if (tile !== null) {
+
+              tile.update();
+
+              if (yp + 1 < maph) {
+                if (getTileType(tile) == "rock" &&
+                    tile.i !== rock[2]) {
+                  if (!tiles[xp][yp + 1]) {
+                    if (rint(0, 10000) > 9990) {
+                      var part = new Part(
+                        rint(tile.x - 2, tile.x + tile.w + 2),
+                        tile.y + tile.h + 2,
+                        4,
+                        4,
+                        null,
+                        "#4444FF"
+                      );
+                      parts.push(part);
+                    }
+                  }
+                }
+                
+                if (tile.i == rock[2]) {
+                  if (!tiles[xp][yp + 1]) {
+                    if (rint(0, 10000) > rint(9800, 9990)) {
+                      var part = new Part(
+                        rint(tile.x - 2, tile.x + tile.w + 2),
+                        tile.y + tile.h,
+                        4,
+                        4,
+                        null,
+                        "#ffe3a6"
+                      );
+                      part.useGravity = false;
+                      part.vy = 0.1;
+                      part.delay = rint(120, 1200);
+                      parts.push(part);
+                    }
+                  }
+                }
+              }
 
               if (tile.i == spcship) {
                 if (player.ecrystal > 0) {
@@ -1681,6 +1795,10 @@
               }
 
               if (tile.damage != null) {
+
+                console.log("(" + player.x + "," + player.y + "," + player.w + "," + player.h + ")",
+                            "(" + tile.x + "," + tile.y + "," + tile.w + "," + tile.h + ")");
+
                 if (colRect(player, tile)) {
                   player.damage(tile.damage);
                 }

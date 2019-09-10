@@ -122,7 +122,7 @@ gulp.task('imagemin', function() {
               interlaced: true,
               optimizationLevel: 3,
               optimize: 3, //keep-empty: Preserve empty transparent frames
-              colors: 2,
+              colors: 3,
               lossy: 100
           }),
           //svg
