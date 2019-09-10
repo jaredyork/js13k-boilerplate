@@ -16,7 +16,15 @@ var less = require('gulp-less');
 var micro = require('gulp-micro');
 var size = require('gulp-size');
 var uglify = require('gulp-uglify');
+var terser = require('gulp-terser');
+var cache = require('gulp-cache');
+var imagemin = require('gulp-imagemin');
+var imageminPngquant = require('imagemin-pngquant');
+var imageminZopfli = require('imagemin-zopfli');
+var imageminMozjpeg = require('imagemin-mozjpeg'); //need to run 'brew install libpng'
+var imageminGiflossy = require('imagemin-giflossy');
 var zip = require('gulp-zip');
+var advzip = require('gulp-advzip');
 var source = require('vinyl-source-stream');
 
 program.on('--help', function(){
@@ -38,7 +46,7 @@ program
 var prod = !!program.prod;
 
 gulp.task('default', ['build']);
-gulp.task('build', ['build_source', 'build_index', 'build_styles']);
+gulp.task('build', ['build_source', 'build_index', 'build_styles', 'imagemin']);
 
 gulp.task('build_source', function() {
   var bundler = browserify('./src/main', {debug: !prod});
@@ -51,7 +59,13 @@ gulp.task('build_source', function() {
     .on('error', browserifyError)
     .pipe(source('build.js'))
     .pipe(buffer())
-    .pipe(gulpif(prod, uglify()))
+    .pipe(concat('build.js'))
+    .pipe(gulpif(prod, terser({
+      mangle: {
+        toplevel: true,
+        properties: true
+      }
+    })))
     .pipe(gulp.dest('build'));
 });
 
@@ -71,6 +85,7 @@ gulp.task('build_styles', function() {
     .pipe(concat('build.css'))
     .pipe(gulpif(prod, cssmin()))
     .pipe(gulp.dest('build'));
+    
 });
 
 gulp.task('clean', function() {
@@ -84,14 +99,59 @@ gulp.task('lint', function() {
     .pipe(eslint.format());
 });
 
+//compress all images
+gulp.task('imagemin', function() {
+  return gulp.src(['src/**/*.{gif,png,jpg}'])
+      .pipe(imagemin([
+          //png
+          imageminPngquant({
+              speed: 1,
+              quality: [0.25, 0.5], //lossy settings,
+          }),
+          imageminZopfli({
+              more: true
+              // iterations: 50 // very slow but more effective
+          }),
+          //gif
+          // imagemin.gifsicle({
+          //     interlaced: true,
+          //     optimizationLevel: 3
+          // }),
+          //gif very light lossy, use only one of gifsicle or Giflossy
+          imageminGiflossy({
+              interlaced: true,
+              optimizationLevel: 3,
+              optimize: 3, //keep-empty: Preserve empty transparent frames
+              colors: 2,
+              lossy: 100
+          }),
+          //svg
+          imagemin.svgo({
+              plugins: [{
+                  removeViewBox: false
+              }]
+          }),
+          //jpg lossless
+          imagemin.jpegtran({
+              progressive: true
+          }),
+          //jpg very light lossy, use vs jpegtran
+          imageminMozjpeg({
+              quality: 90
+          })
+      ]))
+      .pipe(gulp.dest('build'));
+  });
+
 gulp.task('dist', ['build'], function() {
   if (!prod) {
     gutil.log(gutil.colors.yellow('WARNING'), gutil.colors.gray('Missing flag --prod'));
     gutil.log(gutil.colors.yellow('WARNING'), gutil.colors.gray('You should generate production assets to lower the archive size'));
   }
 
-  return gulp.src('build/*')
+  return gulp.src('build/**/*')
     .pipe(zip('archive.zip'))
+    .pipe(advzip())
     .pipe(size())
     .pipe(micro({limit: 13 * 1024}))
     .pipe(gulp.dest('dist'));
@@ -100,6 +160,7 @@ gulp.task('dist', ['build'], function() {
 gulp.task('watch', function() {
   gulp.watch('src/**/*.js', ['lint', 'build_source']);
   gulp.watch('src/styles.less', ['build_styles']);
+  gulp.watch('src/**/*.{gif,png,jpg}', ['imagemin'])
   gulp.watch('src/index.html', ['build_index']);
 });
 
