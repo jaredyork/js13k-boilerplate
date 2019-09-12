@@ -118,6 +118,7 @@ gulp.task('imagemin', function() {
           //     optimizationLevel: 3
           // }),
           //gif very light lossy, use only one of gifsicle or Giflossy
+          
           imageminGiflossy({
               interlaced: true,
               optimizationLevel: 3,

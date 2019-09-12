@@ -10,10 +10,6 @@
       return this.x*x + this.y*y;
     };
 
-    G.prototype.dot3 = function(x, y, z) {
-      return this.x*x + this.y*y + this.z*z;
-    };
-
     g3 = [new G(1,1,0),new G(-1,1,0),new G(1,-1,0),new G(-1,-1,0),
                 new G(1,0,1),new G(-1,0,1),new G(1,0,-1),new G(-1,0,-1),
                 new G(0,1,1),new G(0,-1,1),new G(0,1,-1),new G(0,-1,-1)];
@@ -54,74 +50,6 @@
     };
 
     module.seed(0);
-
-    /*
-    for( i=0; i<256; i++) {
-      perm[i] = perm[i + 256] = player[i];
-      gP[i] = gP[i + 256] = g3[perm[i] % 12];
-    }*/
-
-    // Skewing and unskewing factors for 2, 3, and 4 dimensions
-    F2 = 0.5*(Math.sqrt(3)-1);
-    G2 = (3-Math.sqrt(3))/6;
-
-    // 2D simplex noise
-    module.simplex2 = function(xin, yin) {
-      n0, n1, n2; // Noise contributions from the three corners
-      // Skew the input space to determine which simplex cell we're in
-      s = (xin+yin)*F2; // Hairy factor for 2D
-      i = Math.floor(xin+s);
-      j = Math.floor(yin+s);
-      t = (i+j)*G2;
-      x0 = xin-i+t; // The x,y distances from the cell origin, unskewed.
-      y0 = yin-j+t;
-      // For the 2D case, the simplex shape is an equilateral triangle.
-      // Determine which simplex we are in.
-      i1, j1; // Offsets for second (middle) corner of simplex in (i,j) coords
-      if(x0>y0) { // lower triangle, XY order: (0,0)->(1,0)->(1,1)
-        i1=1; j1=0;
-      } else {    // upper triangle, YX order: (0,0)->(0,1)->(1,1)
-        i1=0; j1=1;
-      }
-      // A step of (1,0) in (i,j) means a step of (1-c,-c) in (x,y), and
-      // a step of (0,1) in (i,j) means a step of (-c,1-c) in (x,y), where
-      // c = (3-sqrt(3))/6
-      x1 = x0 - i1 + G2; // Offsets for middle corner in (x,y) unskewed coords
-      y1 = y0 - j1 + G2;
-      x2 = x0 - 1 + 2 * G2; // Offsets for last corner in (x,y) unskewed coords
-      y2 = y0 - 1 + 2 * G2;
-      // Work out the hashed gradient indices of the three simplex corners
-      i &= 255;
-      j &= 255;
-      gi0 = gP[i+perm[j]];
-      gi1 = gP[i+i1+perm[j+j1]];
-      gi2 = gP[i+1+perm[j+1]];
-      // Calculate the contribution from the three corners
-      t0 = 0.5 - x0*x0-y0*y0;
-      if(t0<0) {
-        n0 = 0;
-      } else {
-        t0 *= t0;
-        n0 = t0 * t0 * gi0.dot2(x0, y0);  // (x,y) of g3 used for 2D gradient
-      }
-      t1 = 0.5 - x1*x1-y1*y1;
-      if(t1<0) {
-        n1 = 0;
-      } else {
-        t1 *= t1;
-        n1 = t1 * t1 * gi1.dot2(x1, y1);
-      }
-      t2 = 0.5 - x2*x2-y2*y2;
-      if(t2<0) {
-        n2 = 0;
-      } else {
-        t2 *= t2;
-        n2 = t2 * t2 * gi2.dot2(x2, y2);
-      }
-      // Add contributions from each corner to get the final noise value.
-      // The result is scaled to return values in the interval [-1,1].
-      return 70 * (n0 + n1 + n2);
-    };
 
     // ##### Perlin noise stuff
 
@@ -217,18 +145,6 @@
         this.la[0] = x;
         this.la[1] = y;
         this.updatevp();
-      },
-      screenToWorld: function(x, y, obj) {
-        obj = obj || {};
-        obj.x = (x / this.vp.scale[0]) + this.vp.lf;
-        obj.y = (y / this.vp.scale[1]) + this.vp.tp;
-        return obj;
-      },
-      worldToScreen: function(x, y, obj) {
-        obj = obj || {};
-        obj.x = (x - this.vp.lf) * (this.vp.scale[0]);
-        obj.y = (y - this.vp.tp) * (this.vp.scale[1]);
-        return obj;      
       }
     };
 
@@ -268,6 +184,9 @@
   var spawnTick=0;
   var spawnCloudDelay = 60;
   var spawnCloudTick = 0;
+  var hasMovedAround = false;
+  var movedTick = 0;
+  var mapPreviewMode = false;
   var n=noise;
   var mseed=rint(0,6000);
   var seeds=[];
@@ -297,11 +216,13 @@
   }
   var bg_lavarock=lc('bg_lavarock','.gif');
   var bg_stars=lc('bg_stars','.gif');
+  var hit=lc('hit','.gif');
   var spcship=lc('spcship','.gif');
   var player=lc('player','.gif');
   var player_drilling=lc('playerdown','.gif');
   var plasmaball=lc('plasmaball','.gif');
   var oortbug=lc('oortbug','.gif');
+  var slugger=lc('slugger', '.gif');
   var heart=lc('heart','.gif');
   var heartempty=lc('heartempty','.gif');
   var lifecanister=lc('lifecanister','.gif');
@@ -323,20 +244,20 @@
       rockIndex: 1,
       hasGrass: !rint(0, 1),
       hasDirt: !rint(0, 1),
-      hasSky: !rint(0, 1)
+      hasSky: true
     },
     {
       name: "sand",
       rockIndex: 2,
       hasGrass: !1,
       hasDirt: !1,
-      hasSky: !rint(0, 1)
+      hasSky: true
     },
     {
       name: "wasteland",
       rockIndex: 3,
       hasGrass: !1,
-      hasSky: !0
+      hasSky: true
     }
   ];
   worldTemplate = worldTemplates[rint(0, worldTemplates.length - 1)];  
@@ -367,6 +288,19 @@
       min = Math.ceil(min);
       max = Math.floor(max);
       return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  function withinCamLoop(snc, callback) {
+    for ( xp = snc.lf - 2; xp < snc.lf + snc.w + 2; xp++) {
+      for ( yp = snc.tp - 2; yp < snc.tp + snc.h + 2; yp++) {
+
+        if (tileWithinMap(xp, yp)) {
+
+          callback(xp, yp);
+
+        }
+      }
+    }
   }
 
   function tileWithinMap(x, y) {
@@ -439,32 +373,6 @@
     return Math.floor(value / cellSize) * cellSize;
   }
 
-  function b(n) {
-    if(n){n=true}else{n=false}
-    n=n?true:false;
-    n=n?!0:!1;
-    n=!!n;
-    return n;
-  }
-
-  // 1D Perlin
-  var slopeAt = [];
-  for (let i = 0; i < 10; i++) {
-    slopeAt[i] = rint(0,100)-1;
-  }
-
-  function sap(x) {
-    var lo = Math.floor(x);
-    var hi = lo+1;
-    var dist = x-lo;
-    loSlope = slopeAt[lo];
-    hiSlope = slopeAt[hi];
-    loPos = loSlope * dist;
-    hiPos = -hiSlope * (1-dist);
-    var u = dist * dist * (3.0 - 2.0 * dist);  // cubic curve
-    return (loPos*(1-u)) + (hiPos*u);  // interpolate
-  }
-
   function isTileAbove(xp, yp) {
     for (var y = yp - 1; y > 0; y--) {
       if (tiles[xp][y]) {
@@ -528,14 +436,12 @@
       t.i=i;
       t.w=tileSize;
       t.h=tileSize;
-      t.vx = 0;
-      t.vy = 0;
       t.hf=0; // horizontal flip
       t.vf=0; // vertical flip
       t.collidable=args.collidable;
       t.destructible=args.destructible;
       t.damage=args.damage;
-      t.elapsed = 0;
+      t.elapsed = 1;
       if (args.canFlip) {
         t.hf=rint(0,1);
         t.vf=rint(0,1);
@@ -545,18 +451,29 @@
       t.rCol='#000';
       t.dmg = 0;
     }
-    hit(amt) {
+    hit(amt, d) {
       if (this.dmg < 1 && this.destructible) {
         this.dmg += amt;
+
+        var y = rint(this.y - 2, this.y + this.h + 2);
+        var vy = 0;
+
+        if (d == 'bs') {
+          y = this.y - 2;
+          vy = -rint(1, 3);
+        }
 
         if (rint(0, 100) > 80) {
           var part = new Part(
             rint(this.x - 2, this.x + this.w + 2),
-            rint(this.y - 2, this.y + this.h + 2),
+            y,
             4,
             4,
             this.i
           );
+          part.vy = vy;
+          
+
           parts.push(part);
         }
       }
@@ -991,11 +908,11 @@
 
       ctx.save();
 
-      if (b(t.fr)) {
+      if (t.fr) {
         ctx.filter = t.fr;
       }
 
-      if (t.fc == 'L') {
+      if (t.fc == 'R') {
 
         ctx.translate(t.x, t.y);
         ctx.scale(-1, 1);
@@ -1006,7 +923,7 @@
           ctx.drawImage(t.i, -10, 0, t.w, t.h);
         }
       }
-      else if (t.fc == 'R') {
+      else if (t.fc == 'L') {
         if (t.isAnim) {
           ctx.drawImage(t.i, t.frame * t.w, 0, t.w, t.h, t.x, t.y, t.w, t.h);
         }
@@ -1019,8 +936,8 @@
   }
 
   class OortBug extends GroundMob {
-    constructor(x,y,i) {
-      super(x,y,16,12,i,!0,2,4);
+    constructor(x,y,w,h,i) {
+      super(x,y,w,h,i,!0,2,4);
       this.vx = rint(0,10) > 1 ? -1 : 1;
       if (Math.sign(this.vx) == 1) {
         this.fc = "R";
@@ -1095,8 +1012,19 @@
       }
       case 1: {
 
+        if (mapPreviewMode) {
+          camera.zoomTo(5000);
+          camera.moveTo((mapw * tileSize)/2, (maph * tileSize)/2);
+        }
+        else {
+          camera.zoomTo(300);
+        }
+
+        var terrainDivisor = rint(10, 200);
+        var terrainAmplifier = rint(50, 500);
+
         for(xp=0;xp<bgTiles.length;xp++) {
-          var prln=Math.floor(sap(xp/100) + 32);
+          var prln=Math.floor((maph * 0.25) + Math.pow(noise.perlin2(xp/terrainDivisor, 0), 2) * terrainAmplifier);
 
           for(yp=prln;yp>0;yp--){
 
@@ -1122,15 +1050,15 @@
             }
             
             if (canAdd) {
-              tile=new BgTile(xp*bgTileSize,yp*bgTileSize,[texture],0);
-              bgTiles[xp][yp] = tile;
+              //tile=new BgTile(xp*bgTileSize,yp*bgTileSize,[texture],0);
+              //bgTiles[xp][yp] = tile;
             }
 
           }
         }
 
         for ( xp=0;xp<mapw;xp++) {
-          var prln=Math.floor(sap(xp/100) + 32);
+          var prln=Math.floor((maph * 0.25) + Math.pow(noise.perlin2(xp/terrainDivisor, 0), 2) * terrainAmplifier);
 
           for ( yp=prln;yp<maph+6;yp++) {
 
@@ -1208,9 +1136,11 @@
 
         var spcshipx = Math.floor(mapw/2);
 
-        player = new P(spcshipx*tileSize,128,player);
-        player.idrlg = player_drilling;
-        players.push(player);
+        if (!mapPreviewMode) {
+          player = new P(spcshipx*tileSize,128,player);
+          player.idrlg = player_drilling;
+          players.push(player);
+        }
 
         var foundTile = false;
         for (var y=0;y<maph;y++) {
@@ -1319,6 +1249,9 @@
 
       if (!player.dead) {
         if (k[90]) { // jump
+
+          movedTick++;
+
           if (!player.cheatmode) {
             if (!player.jmp && player.gnd) {
               player.jmp = !0;
@@ -1337,6 +1270,8 @@
         if (k[40]) { // down
           player.drlg = !0;
 
+          movedTick++;
+
           if (player.cheatmode) {
             if (player.vy < player.spd) {
               player.vy++;
@@ -1349,6 +1284,8 @@
         }
 
         if (k[39]) { // right
+
+          movedTick++;
           
           if (player.vx < player.spd * player.vxm) {
             player.vx++;
@@ -1359,6 +1296,8 @@
 
         if (k[37]) { // left
 
+          movedTick++;
+
           if (player.vx > -player.spd * player.vxm) {
             player.vx--;
             player.fc = "L";
@@ -1367,7 +1306,9 @@
 
         if (k[88]) {
 
-          player.dsh=!0;
+          player.dsh = true;
+
+          movedTick++;
 
           if (player.st < player.sd) {
             player.st++;
@@ -1476,7 +1417,7 @@
           }
         }
 
-        if (mobs.length < 200) {
+        if (mobs.length < 50) {
           var location = locations[rint(0, locations.length - 1)];
 
           //if (rint(0,100)>98) {
@@ -1487,7 +1428,15 @@
               location.x * tileSize,
               location.y * tileSize
             ) > 70) {
-              var mob = new OortBug(location.x*tileSize,location.y*tileSize,oortbug);
+              var texture = oortbug;
+              var width = 16;
+              var height = 12;
+
+              if (rint(0, 10) >= 5) {
+                texture = slugger;
+                height=8;
+              }
+              var mob = new OortBug(location.x*tileSize,location.y*tileSize,width,height,texture);
 
               mobs.push(mob);
             }
@@ -1535,6 +1484,10 @@
             
                   if (d === "bs") {
                     part.gnd = !0;
+                  }
+
+                  if (!d) {
+                    part.gnd = false;
                   }
                 }
               }
@@ -1594,6 +1547,7 @@
                   } else if (d === "bs") {
                     mob.gnd = !0;
                     mob.jmp = !1;
+                    mob.vy *= -1;
                   }
                 }
               }
@@ -1601,8 +1555,31 @@
           }
         }
 
+        if (
+          mob.x < snc.lf * tileSize ||
+          mob.x > (snc.lf + snc.w) * tileSize ||
+          mob.y < snc.tp * tileSize ||
+          mob.y > (snc.tp + snc.h) * tileSize
+        ) {
+
+          mobs.splice(i, 1);
+        }
+
         for ( j = 0; j < projs.length; j++) {
           if (colRect(projs[j], mob)) {
+
+            var part = new Part(
+              projs[j].x,
+              projs[j].y,
+              8,
+              8,
+              hit
+            );
+            part.delay = 2;
+            part.useGravity = false;
+            
+            parts.push(part);
+
             mobs.splice(i, 1);
             projs.splice(j, 1);
           }
@@ -1665,20 +1642,6 @@
                 destructible:false,
                 collidable:false
               };
-              
-              if (xp-1 >= 0) {
-                var tllf = tiles[xp-1][yp];
-                if (!tllf) {
-                  tiles[xp-1][yp] = new Tile((xp-1)*tileSize,yp*tileSize,lava,args);
-                }
-              }
-
-              if (xp+1 < mapw) {
-                var tlrt = tiles[xp+1][yp];
-                if (!tlrt) {
-                  tiles[xp+1][yp] = new Tile((xp+1)*tileSize,yp*tileSize,lava,args);
-                }
-              }
 
               if (yp+1 < maph) {
                 var tlbot = tiles[xp][yp+1];
@@ -1775,14 +1738,14 @@
                   player.jmp = !1;
                   player.anim.d=9999;
 
-                  tile.hit(dmg);
+                  tile.hit(dmg, d);
 
                 } else if (d === "bs") {
                   player.gnd = !0;
                   player.jmp = !1;
 
                   if (player.drlg) {
-                    tile.hit(dmg);
+                    tile.hit(dmg, d);
                   }
 
                   if (player.vy > 8) {
@@ -1834,7 +1797,11 @@
       }
 
       players[0].x = clamp(players[0].x, 0, (mapw*tileSize)-players[0].w);
-      players[0].y = clamp(players[0].y, 0, (maph*tileSize)-players[0].h);
+      players[0].y = clamp(players[0].y, 0, (maph*tileSize)-players[0].h + 128);
+
+      if (players[0].y > maph * tileSize) {
+        players[0].damage(50);
+      }
 
       if (hasLaunched) {
         if (spaceship) {
@@ -1864,8 +1831,13 @@
         }
       }
       else {
-        ppos= { x: players[0].x, y: players[0].y };
-        camera.moveTo(Math.round(ppos.x), Math.round(ppos.y));
+        if (mapPreviewMode) {
+          camera.moveTo((mapw * tileSize)/2, (maph * tileSize)/2);
+        }
+        else {
+          ppos= { x: players[0].x, y: players[0].y };
+          camera.moveTo(Math.round(ppos.x), Math.round(ppos.y));
+        }
       }
       camera.vp.lf = clamp(camera.vp.lf, 0, (mapw*tileSize) - camera.vp.w);
       camera.vp.tp = clamp(camera.vp.tp, 0, (maph*tileSize) - camera.vp.h);
@@ -1874,7 +1846,7 @@
 
         for( yp=0;yp<bgTiles[xp].length;yp++){
 
-          if (b(bgTiles[xp][yp])) {
+          if (bgTiles[xp][yp]) {
             bg=bgTiles[xp][yp];
 
             if (!hasLaunched) {
@@ -1892,8 +1864,21 @@
     ctx.clearRect(0,0,w,h - 4);
 
     if (worldTemplate.hasSky) {
+      ctx.save();
       ctx.fillStyle = worldTemplate.skyColor;
       ctx.fillRect(0, 0, w, h);
+
+      // Create gradient
+      grd = ctx.createLinearGradient(w, 0, w, h);
+
+      // Add colors
+      grd.addColorStop(0.000, 'rgba(0, 0, 0, 0.500)');
+      grd.addColorStop(1.000, 'rgba(0, 0, 0, 0.000)');
+      
+      // Fill with gradient
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
     }
 
     for ( i = 0; i < clouds.length; i++) {
@@ -1926,7 +1911,7 @@
 
           tile = bgTiles[xp][yp];
 
-          if (b(tile)) {
+          if (tile) {
             if (tile.x > wcam.x - bgTileSize && tile.x < wcam.x + wcam.w &&
               tile.y > wcam.y - bgTileSize && tile.y < wcam.y + wcam.h) {
 
@@ -1939,29 +1924,24 @@
       }
     }
 
-    for ( xp = snc.lf - 2; xp < snc.lf + snc.w + 2; xp++) {
-      for ( yp = snc.tp - 2; yp < snc.tp + snc.h + 2; yp++) {
+    withinCamLoop(snc, function(xp, yp) {
+      tile = tiles[xp][yp];
+      alwaysLoadedTile = alwaysLoadedTiles[xp][yp];
+      fgTile = fgTiles[xp][yp];
 
-        if (tileWithinMap(xp, yp)) {
-
-          tile = tiles[xp][yp];
-          alwaysLoadedTile = alwaysLoadedTiles[xp][yp];
-          fgTile = fgTiles[xp][yp];
-
-          if (tile !== undefined && tile !== null) {
-            tile.draw(ctx);
-          }
-
-          if (alwaysLoadedTile !== undefined && alwaysLoadedTile !== null) {
-            alwaysLoadedTile.draw(ctx);
-          }
-
-          if (fgTile !== undefined && fgTile !== null) {
-            fgTile.draw(ctx);
-          }
-        }
+      if (tile !== undefined && tile !== null) {
+        tile.draw(ctx);
       }
-    }
+
+      if (alwaysLoadedTile !== undefined && alwaysLoadedTile !== null) {
+        alwaysLoadedTile.draw(ctx);
+      }
+
+      if (fgTile !== undefined && fgTile !== null) {
+        fgTile.draw(ctx);
+      }
+    });
+
 
     if (spaceship) {
       spaceship.draw(ctx);
@@ -1985,53 +1965,72 @@
 
     camera.end();
 
-    for (var i = 0; i < players[0].maxhp; i++) {
-      ctx.drawImage(heartempty, 32 + (i * 32), 32, 32, 32);
-      if (i < players[0].hp) {
-        ctx.drawImage(heart, 32 + (i * 32), 32, 32, 32);
+    if (players.length > 0) {
+
+      if (movedTick > 2000) {
+        hasMovedAround = true;
       }
-    }
 
-    var inv = [
-      { icon: ecrystal, text: players[0].ecrystal + "/9" },
-      { icon: plasmaball, text: players[0].ammo },
-      { icon: oiron, text: players[0].iron }
-    ];
+      for (var i = 0; i < players[0].maxhp; i++) {
+        ctx.drawImage(heartempty, 32 + (i * 32), 32, 32, 32);
+        if (i < players[0].hp) {
+          ctx.drawImage(heart, 32 + (i * 32), 32, 32, 32);
+        }
+      }
 
-    for (var i = 0; i < inv.length; i++) {
-      var item = inv[i];
-      ctx.drawImage(item.icon, 32, 80 + (i * 48), 32, 32);
+      var inv = [
+        { icon: ecrystal, text: players[0].ecrystal + "/9" },
+        { icon: plasmaball, text: players[0].ammo },
+        { icon: oiron, text: players[0].iron }
+      ];
 
-      ctx.save();
-      ctx.font = "bold 24px monospace";
-      ctx.fillStyle = "#fff";
-      ctx.fillText(item.text, 72, 106 + (i * 48));
-      ctx.restore();
-    }
+      for (var i = 0; i < inv.length; i++) {
+        var item = inv[i];
+        ctx.drawImage(item.icon, 32, 80 + (i * 48), 32, 32);
 
-    var message = "";
-    var restartMessage = "";
+        ctx.save();
+        ctx.font = "bold 24px monospace";
+        ctx.fillStyle = "#fff";
+        ctx.fillText(item.text, 72, 106 + (i * 48));
+        ctx.restore();
+      }
 
-    if (players[0].dead) {
-      message = "You died. :c";
-      restartMessage="A new game will start in a sec...";
-    }
+      var message = [];
+      var restartMessage = "";
+      var baseY = 280;
 
-    if (hasLaunched && spaceship.y < 0) {
-      message = "You're on your way to orbit!";
-      restartMessage="Reload to run out of fuel and crash again.";
-    }
+      if (!hasMovedAround && !mapPreviewMode && !players[0].dead && !hasLaunched) {
+        message[0] = "You're stranded!";
+        message[1] = "Collect the nine energy crystals to leave the planet.";
+        message[2] = "Z - Jump; X - Dash; Left/Right - Move; Drill Down - Down Arrow; Ladders - Up Arrow";
 
-    if (restartMessage != "") {
-      ctx.save();
-      ctx.fillStyle = "#111";
-      ctx.fillRect(0, 240, w, 128);
-      ctx.fillStyle = "#fff";
-      ctx.font = "32px monospace";
-      ctx.fillText(message, (w/2)-ctx.measureText(message).width/2, 310);
-      ctx.font = "14px monospace";
-      ctx.fillText(restartMessage, (w/2)-ctx.measureText(restartMessage).width/2, 340);
-      ctx.restore();
+        baseY = 64;
+      }
+
+      if (players[0].dead) {
+        message[0] = "You died. :c";
+        restartMessage="A new game will start in a sec...";
+      }
+
+      if (hasLaunched && spaceship.y < 0) {
+        message[0] = "You're on your way to orbit!";
+        restartMessage="Reload to run out of fuel and crash again.";
+      }
+
+      if (message != "") {
+        ctx.save();
+        ctx.fillStyle = "#111";
+        ctx.fillRect(0, baseY - 32, w, 128);
+        ctx.fillStyle = "#fff";
+        var fontSize = (32 - message.length * 6);
+        ctx.font = fontSize + "px monospace";
+        for (var i = 0; i < message.length; i++) {
+          ctx.fillText(message[i], (w/2)-ctx.measureText(message[i]).width/2, baseY + fontSize + (i * fontSize));
+        }
+        ctx.font = "14px monospace";
+        ctx.fillText(restartMessage, (w/2)-ctx.measureText(restartMessage).width/2, 340);
+        ctx.restore();
+      }
     }
 
   }
@@ -2043,8 +2042,6 @@
   ael=addEventListener;
   ael('DOMContentLoaded',(e)=>{
     init();
-
-    camera.zoomTo(300);
     ml();
   });
   ael('keydown',e=>{
